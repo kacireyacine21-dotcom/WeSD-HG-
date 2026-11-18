@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Stress Buster - Mobile & PC</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            background-color: #090a0f;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none; /* يمنع سحب الشاشة أو عمل زووم أثناء اللعب */
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+        }
+        #ui {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            right: 15px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.1rem;
+            text-shadow: 0 0 10px #00f3ff;
+            pointer-events: none;
+            z-index: 10;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #121629 0%, #090a0f 100%);
+        }
+        #gameOver {
+            position: absolute;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            background: rgba(9, 10, 15, 0.9);
+            padding: 30px 40px;
+            border: 2px solid #ff0055;
+            box-shadow: 0 0 30px rgba(255, 0, 85, 0.5);
+            border-radius: 12px;
+            text-align: center;
+            z-index: 20;
+        }
+        button {
+            margin-top: 20px;
+            padding: 12px 30px;
+            font-size: 1.1rem;
+            background: #00f3ff;
+            color: #090a0f;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 0 15px #00f3ff;
+        }
+        .heightScore{
+            text-align: center;
+        
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div>النقاط: <span id="score">0</span></div>
+        <div style="font-size: 0.9rem; opacity: 0.8;">المس وحرّك للعب</div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="gameOver">
+        <h2 style="color: #ff0055; font-size: 1.8rem; text-shadow: 0 0 10px #ff0055;">انتهت الجولة!</h2>
+        <p style="margin-top: 10px; font-size: 1.2rem;">نقاطك: <span id="finalScore">0</span></p>
+        <button onclick="resetGame()">العب مجدداً</button>
+    </div>
+    <div class="heightScore">
+        <P id="margin-top:10px;font-size:1.2rem">height Score :1000</P>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const gameOverEl = document.getElementById('gameOver');
+        const finalScoreEl = document.getElementById('finalScore');
+
+        let score = 0;
+        let isGameOver = false;
+        let animationId;
+        let isTouching = false;
+        let lastShotTime = 0;
+
+        // ضبط أبعاد الكانفاس لتناسب حجم الشاشة الفعلي
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            player.y = canvas.height - 80;
+            if (player.x > canvas.width) player.x = canvas.width / 2;
+        }
+
+        const player = {
+            x: window.innerWidth / 2,
+            y: window.innerHeight - 80,
+            radius: 16,
+            color: '#00f3ff'
+        };
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        let bullets = [];
+        let enemies = [];
+        let particles = [];
+
+        // --- تحكم الهاتف (اللمس) ---
+        canvas.addEventListener('touchstart', (e) => {
+            if (isGameOver) return;
+            isTouching = true;
+            updatePlayerPosition(e.touches[0].clientX);
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (isGameOver) return;
+            e.preventDefault();
+            updatePlayerPosition(e.touches[0].clientX);
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            isTouching = false;
+        });
+
+        // --- تحكم الكمبيوتر (الماوس) ---
+        canvas.addEventListener('mousemove', (e) => {
+            if (isGameOver) return;
+            updatePlayerPosition(e.clientX);
+        });
+
+        canvas.addEventListener('mousedown', () => {
+            if (!isGameOver) isTouching = true;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isTouching = false;
+        });
+
+        function updatePlayerPosition(clientX) {
+            // إبقاء اللاعب داخل حدود الشاشة
+            player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, clientX));
+        }
+
+        // إطلاق نار تلقائي أثناء اللمس أو الضغط
+        function handleShooting(timestamp) {
+            if (isTouching && timestamp - lastShotTime > 180) { // طلقة كل 180 ملي ثانية
+                bullets.push({
+                    x: player.x,
+                    y: player.y - player.radius,
+                    radius: 4,
+                    speed: 10,
+                    color: '#fff'
+                });
+                lastShotTime = timestamp;
+            }
+        }
+
+        function spawnEnemy() {
+            if (isGameOver) return;
+            const size = Math.random() * 18 + 16;
+            enemies.push({
+                x: Math.random() * (canvas.width - size * 2) + size,
+                y: -size,
+                size: size,
+                speed: Math.random() * 2.5 + 2 + (score * 0.008),
+                color: '#ff0055'
+            });
+            setTimeout(spawnEnemy, Math.max(350, 950 - score * 4));
+        }
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 12; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    alpha: 1,
+                    color: color
+                });
+            }
+        }
+
+        function update(timestamp) {
+            if (isGameOver) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            handleShooting(timestamp);
+
+            // رسم اللاعب (على شكل مثلث نيون أنيق)
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(player.x, player.y - player.radius);
+            ctx.lineTo(player.x - player.radius, player.y + player.radius);
+            ctx.lineTo(player.x + player.radius, player.y + player.radius);
+            ctx.closePath();
+            ctx.fillStyle = player.color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = player.color;
+            ctx.fill();
+            ctx.restore();
+
+            // تحديث ورسم الطلقات
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                b.y -= b.speed;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+                ctx.fillStyle = b.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#00f3ff';
+                ctx.fill();
+                ctx.closePath();
+
+                if (b.y < 0) bullets.splice(i, 1);
+            }
+
+            // تحديث ورسم الأعداء
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                enemy.y += enemy.speed;
+
+                ctx.fillStyle = enemy.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = enemy.color;
+                ctx.fillRect(enemy.x - enemy.size / 2, enemy.y - enemy.size / 2, enemy.size, enemy.size);
+
+                // تصادم العدو مع اللاعب
+                const distPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+                if (distPlayer - enemy.size / 2 - player.radius < 0) {
+                    endGame();
+                    return;
+                }
+
+                // تصادم الطلقات مع العدو
+                for (let j = bullets.length - 1; j >= 0; j--) {
+                    const bullet = bullets[j];
+                    const distBullet = Math.hypot(bullet.x - enemy.x, bullet.y - enemy.y);
+                    if (distBullet - enemy.size / 2 - bullet.radius < 0) {
+                        createExplosion(enemy.x, enemy.y, enemy.color);
+                        enemies.splice(i, 1);
+                        bullets.splice(j, 1);
+                        score += 10;
+                        scoreEl.innerText = score;
+                        break;
+                    }
+                }
+
+                if (enemy.y > canvas.height + enemy.size) {
+                    enemies.splice(i, 1);
+                }
+            }
+
+            // تحديث ورسم الشظايا
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= 0.035;
+
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 4, 4);
+                ctx.restore();
+
+                if (p.alpha <= 0) particles.splice(i, 1);
+            }
+
+            animationId = requestAnimationFrame(update);
+        }
+
+        function endGame() {
+            isGameOver = true;
+            isTouching = false;
+            cancelAnimationFrame(animationId);
+            finalScoreEl.innerText = score;
+            gameOverEl.style.display = 'flex';
+        }
+
+        function resetGame() {
+            score = 0;
+            scoreEl.innerText = score;
+            bullets = [];
+            enemies = [];
+            particles = [];
+            isGameOver = false;
+            gameOverEl.style.display = 'none';
+            player.x = canvas.width / 2;
+            requestAnimationFrame(update);
+            spawnEnemy();
+        }
+
+        requestAnimationFrame(update);
+        spawnEnemy();
+    </script>
+</body>
+</html>
